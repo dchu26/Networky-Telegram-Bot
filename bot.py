@@ -2,7 +2,6 @@ import os
 import ast
 import csv
 import gspread
-import pandas as pd
 import requests
 from collections import defaultdict
 from dotenv import load_dotenv, find_dotenv
@@ -96,7 +95,7 @@ def csv_to_google():
     with open('database.csv', 'r') as file_obj:
         content = file_obj.read()
         gclient.import_csv(spreadsheet.id, data=content)
-    
+
 # Function that gets information from Google Sheet and populates our database
 def google_to_dict():
     # Opening the spreadsheet on the first sheet
@@ -112,16 +111,6 @@ def google_to_dict():
         record_without_first = {key: value for key, value in record.items() if key != first_key}
         # Initializing database using User ID as the key, and record_without_first as the value
         dictionary[record[first_key]] = record_without_first
-    
-    # Converting the string representation of the lists into lists when applicable
-    # ast.literal_eval() is quite strict on conversion so we have to check if it is valid to convert before we actually do it
-    for key in dictionary:
-        if is_valid_list_string(dictionary[key]['linkedin']):
-            dictionary[key]['linkedin'] = ast.literal_eval(dictionary[key]['linkedin'])
-        if is_valid_list_string(dictionary[key]['email']):
-            dictionary[key]['email'] = ast.literal_eval(dictionary[key]['email'])
-        if is_valid_list_string(dictionary[key]['twitter']):
-            dictionary[key]['twitter'] = ast.literal_eval(dictionary[key]['twitter'])
 
 
 # Helper function for checking if a string representation of a list can be converted into a list
@@ -137,9 +126,9 @@ def is_valid_list_string(string_representation):
 
 # Lets us use the /start command
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global count, dictionary
+    global dictionary
     dictionary = defaultdict(dict)
-    count = 0
+    google_to_dict()
     await update.message.reply_text('Hello 👋, I’m Networky Intro Bot!')
     await update.message.reply_text('I’m an AI-driven match-making bot that helps you grow your personal network.')
     await update.message.reply_text('I’ll help you connect with 3 people from Tess Hau personal network that I think you’ll love to talk to 😉')
@@ -185,51 +174,37 @@ async def add_suggested_actions(update, context, question, answers):
 
 
 async def handle_response(update, context, text: str) -> str:
-    global count
-
+    count = len(dictionary[update.message.chat.id])
     if count == 0:
-        count += 1
         dictionary[update.message.chat.id]["first_name"] = text
         msg = "Nice to meet you " + text + "!\
             \nWhat's your last name?"
-        await update.message.reply_text(msg)
+        await context.bot.send_message(chat_id=get_chat_id(update, context), text=msg)
     elif count == 1:
-        count += 1
         dictionary[update.message.chat.id]["last_name"] = text
         await add_suggested_actions(update, context, q1, a1)
-    elif count == 2:
-        dictionary[update.message.chat.id]["mode_id"] = text
-        count += 1
-        await add_suggested_actions(update, context, q2, a2)
     elif count == 3:
-        count += 2
-        dictionary[update.message.chat.id]["role"] = text
-        msg = "Great 🙌\
-        \nNext, what is your number 1 personal or professional goal right now?"
-        await update.message.reply_text(msg)
+        dictionary[update.message.chat.id]["mode_id"] = text
+        await add_suggested_actions(update, context, q2, a2)
     elif count == 4:
-        count += 1
-        msg = "Great 🙌\
+        msg1 = "Great 🙌\
         \nNext, what is your number 1 personal or professional goal right now?"
-        await update.message.reply_text(msg)
+        await context.bot.send_message(chat_id=get_chat_id(update, context), text=msg1)
     elif count == 5:
-        count += 1
         dictionary[update.message.chat.id]["goal"] = text
-        msg = "And, do you have any other personal or professional goals right now?\
+        msg2 = "And, do you have any other personal or professional goals right now?\
             \nPlease share a few more with me…"
-        await update.message.reply_text(msg)
+        await context.bot.send_message(chat_id=get_chat_id(update, context), text=msg2)
     elif count == 6:
-        count += 1
         dictionary[update.message.chat.id]['other_goals'] = text
-        msg = "You are doing great!\
+        msg3 = "You are doing great!\
             \nFinal question, what skillsets are you looking to learn more about?"
-        await update.message.reply_text(msg)
+        await context.bot.send_message(chat_id=get_chat_id(update, context), text=msg3)
     elif count == 7:
-        count += 1
         dictionary[update.message.chat.id]['skills'] = text
-        msg = "Well done! \
+        msg4 = "Well done! \
             \nHere are the top 3 people I think you should meet"
-        await update.message.reply_text(msg)
+        await context.bot.send_message(chat_id=get_chat_id(update, context), text=msg4)
         for url in range(len(urls)):
             parameters = {
                 "chat_id" : get_chat_id(update, context),
@@ -237,28 +212,29 @@ async def handle_response(update, context, text: str) -> str:
                 "caption" : linkedin[url]
             }
             resp = requests.get(base_url, data = parameters)
-    else:
         dic_to_csv()
         csv_to_google()
 
+    '''
+    print(dictionary)
+    print(len(dictionary[update.message.chat.id]))
+    '''
 
 
 async def handle_callback(update, context):
-    global count
     ans = update.callback_query.data
     if ans in a1:
         dictionary[update.callback_query.from_user.id]['mode'] = ans
         await update.callback_query.message.edit_text("Great, what's your " + ans + "?")
     else:
         if ans == a2[-1]:
-            msg = "How would you describe yourself? 👀"
-            await update.callback_query.message.edit_text(msg)
+            msg6 = "How would you describe yourself? 👀"
+            await update.callback_query.message.edit_text(msg6)
         else:
-            count += 2
             dictionary[update.callback_query.from_user.id]["role"] = ans
-            msg = "Great 🙌\
+            msg7 = "Great 🙌\
             \nNext, what is your number 1 personal or professional goal right now?"
-            await update.callback_query.message.edit_text(msg)
+            await update.callback_query.message.edit_text(msg7)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get basic info of the incoming message
@@ -270,7 +246,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     if text is not None:
-        await handle_response(update, context, text)
+        if len(dictionary[update.message.chat.id]) == 4:
+            dictionary[update.message.chat.id]['role'] = text
+            msg8 = "Great 🙌\
+            \nNext, what is your number 1 personal or professional goal right now?"
+            await context.bot.send_message(chat_id=get_chat_id(update, context), text=msg8)
+        else:
+            await handle_response(update, context, text)
     
     
 # Log errors
