@@ -1,6 +1,12 @@
 import os
+import ast
+import csv
+import gspread
+import pandas as pd
+import requests
 from collections import defaultdict
 from dotenv import load_dotenv, find_dotenv
+from oauth2client.service_account import ServiceAccountCredentials
 
 from typing import Final
 
@@ -27,6 +33,22 @@ print('Starting up bot...')
 
 TOKEN: Final = os.environ.get("TOKEN")
 BOT_USERNAME: Final = '@networky_intro_bot'
+scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/spreadsheets',
+         "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+credentials = ServiceAccountCredentials.from_json_keyfile_name(
+    'client_secret.json', scope)
+sheet_name = "Networky_Intro_Bot"
+gclient = gspread.authorize(credentials)
+base_url = "https://api.telegram.org/bot" + TOKEN + "/sendPhoto"
+urls = [
+            "https://ibb.co/XjmdqWZ",
+            "https://ibb.co/9skMKxc",
+            "https://ibb.co/VMrykxZ"
+]
+linkedin = ["https://www.linkedin.com/in/kaushikpsub/",
+            "https://www.linkedin.com/in/samuel-stern-phd-029331116/",
+            "https://www.linkedin.com/in/mona-tiesler/"]
+
 
 text_count = [0,2,4,5,6,7,8]
 poll_count = [1,3,9]
@@ -37,6 +59,81 @@ q2 = "All set 👏 Now, for me to find the best matches for you, I will ask you
     \nWhat best describes you?"
 a2 = ['Investor', 'Founder', 'Builder', 'Engineer', 'Business Dev & Marketing', 'Advisor', 'Other']
 
+
+# Function for moving data from dictionary to CSV file
+def dic_to_csv():
+    # Write dictionary into csv file
+    
+    # Initializing each column name
+    csv_columns = ['User_ID', 'first_name', 'last_name',
+                   'mode', 'mode_id', 'role', 'goal', 'other_goals', 'skills']
+    
+    # Try to open the csv file and write to it
+    try:
+        with open("database.csv", "w") as csvfile:
+            # Writing the data to the csv file with these parameters
+            writer = csv.DictWriter(
+                csvfile, fieldnames=csv_columns, lineterminator='\n')
+            # Creating the header in the CSV file
+            writer.writeheader()
+            # Writing everything else
+            for key, val in dictionary.items():
+                # Creating key-value with the User ID key
+                row = {'User_ID': key}
+                row.update(val)
+                writer.writerow(row)
+    # Any possible error that occurs with opening the csv file
+    except IOError:
+        print("I/O error")
+
+
+# Basic function to write csv data to the Google sheet
+def csv_to_google():
+    # Opens the spreadsheet
+    spreadsheet = gclient.open(sheet_name)
+
+    # Reading and writing to the Google Sheet
+    with open('database.csv', 'r') as file_obj:
+        content = file_obj.read()
+        gclient.import_csv(spreadsheet.id, data=content)
+    
+# Function that gets information from Google Sheet and populates our database
+def google_to_dict():
+    # Opening the spreadsheet on the first sheet
+    spreadsheet = gclient.open(sheet_name).sheet1
+    # Getting data from spreadsheet
+    data = spreadsheet.get_all_records()
+    
+    # Getting data for each row
+    for record in data:
+        # Get the first key-value pair
+        first_key = next(iter(record))
+        # Getting the key-value records and storing as a dict, excluding the first key-value pair
+        record_without_first = {key: value for key, value in record.items() if key != first_key}
+        # Initializing database using User ID as the key, and record_without_first as the value
+        dictionary[record[first_key]] = record_without_first
+    
+    # Converting the string representation of the lists into lists when applicable
+    # ast.literal_eval() is quite strict on conversion so we have to check if it is valid to convert before we actually do it
+    for key in dictionary:
+        if is_valid_list_string(dictionary[key]['linkedin']):
+            dictionary[key]['linkedin'] = ast.literal_eval(dictionary[key]['linkedin'])
+        if is_valid_list_string(dictionary[key]['email']):
+            dictionary[key]['email'] = ast.literal_eval(dictionary[key]['email'])
+        if is_valid_list_string(dictionary[key]['twitter']):
+            dictionary[key]['twitter'] = ast.literal_eval(dictionary[key]['twitter'])
+
+
+# Helper function for checking if a string representation of a list can be converted into a list
+def is_valid_list_string(string_representation):
+    # Situation where it is possible to do so
+    try:
+        ast.literal_eval(string_representation)
+        return True
+    # Situation where the input is invalid for ast.literal_eval()
+    except (SyntaxError, ValueError):
+        return False
+    
 
 # Lets us use the /start command
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,13 +230,24 @@ async def handle_response(update, context, text: str) -> str:
         msg = "Well done! \
             \nHere are the top 3 people I think you should meet"
         await update.message.reply_text(msg)
+        for url in range(len(urls)):
+            parameters = {
+                "chat_id" : get_chat_id(update, context),
+                "photo" : urls[url],
+                "caption" : linkedin[url]
+            }
+            resp = requests.get(base_url, data = parameters)
+    else:
+        dic_to_csv()
+        csv_to_google()
+
 
 
 async def handle_callback(update, context):
+    global count
     ans = update.callback_query.data
     if ans in a1:
         dictionary[update.callback_query.from_user.id]['mode'] = ans
-        print(dictionary)
         await update.callback_query.message.edit_text("Great, what's your " + ans + "?")
     else:
         if ans == a2[-1]:
@@ -163,7 +271,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text is not None:
         await handle_response(update, context, text)
-        #print(count, text)
     
     
 # Log errors
