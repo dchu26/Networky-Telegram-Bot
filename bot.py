@@ -1,6 +1,4 @@
 import os
-import time
-import logging
 from collections import defaultdict
 from dotenv import load_dotenv, find_dotenv
 
@@ -19,8 +17,8 @@ from telegram import (
 )
 
 # pip install python-telegram-bot
-from telegram import Update
 from telegram.ext import (
+        CallbackQueryHandler,
         Application,
         CommandHandler,
         MessageHandler,
@@ -38,13 +36,13 @@ print('Starting up bot...')
 TOKEN: Final = os.environ.get("TOKEN")
 BOT_USERNAME: Final = '@networky_intro_bot'
 
-count = 0
 text_count = [0,2,4,5,6,7,8]
 poll_count = [1,3,9]
 
 q1 = "What’s the best way for me to send you your matches from Tess network?"
 a1 = ['Email', 'Telegram', 'SMS', 'WhatsApp']
-q2 = "What best describes you?"
+q2 = "All set 👏 Now, for me to find the best matches for you, I will ask you a few more questions. \
+    \nWhat best describes you?"
 a2 = ['Investor', 'Founder', 'Builder', 'Engineer', 'Business Dev & Marketing', 'Advisor', 'Other']
  
 
@@ -53,6 +51,8 @@ dictionary = defaultdict(dict)
 
 # Lets us use the /start command
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global count
+    count = 0
     await update.message.reply_text('Hello 👋, I’m Networky Intro Bot!')
     await update.message.reply_text('I’m an AI-driven match-making bot that helps you grow your personal network.')
     await update.message.reply_text('I’ll help you connect with 3 people from Tess Hau personal network that I think you’ll love to talk to 😉')
@@ -84,7 +84,7 @@ def get_chat_id(update, context):
 
     return chat_id
     
-
+'''
 def get_answer(update):
   answers = update.poll.options
 
@@ -96,56 +96,90 @@ def get_answer(update):
       ret = answer.text
       break
   return ret
+  '''
 
 
-def add_suggested_actions(update, context, response):
+async def add_suggested_actions(update, context, question, answers):
     options = []
 
-    for item in response.items:
+    for item in answers:
         options.append(InlineKeyboardButton(item, callback_data=item))
 
     reply_markup = InlineKeyboardMarkup([options])
 
     # update.message.reply_text(response.message, reply_markup=reply_markup)
-    context.bot.send_message(chat_id=get_chat_id(update, context), text=response.message, reply_markup=reply_markup)
+    await context.bot.send_message(chat_id=get_chat_id(update, context), text=question, reply_markup=reply_markup)
 
 
-def handle_response(text: str) -> str:
+async def handle_response(update, context, text: str) -> str:
     global count
 
     if count == 0:
         count += 1
-        dictionary["first_name"] = text
-        return "Nice to meet you " + text + "!\
+        dictionary[update.message.chat.id]["first_name"] = text
+        msg = "Nice to meet you " + text + "!\
             \nWhat's your last name?"
+        await update.message.reply_text(msg)
+    elif count == 1:
+        count += 1
+        dictionary[update.message.chat.id]["last_name"] = text
+        await add_suggested_actions(update, context, q1, a1)
+    elif count == 2:
+        count += 1
+        await add_suggested_actions(update, context, q2, a2)
     elif count == 3:
         count += 1
-        return "All set 👏 Now, for me to find the best matches for you, I will ask you a few more questions."
+        dictionary[update.message.chat.id]["role"] = text
+        await update.message.reply_text(msg)
     elif count == 4:
         count += 1
-        return "How would you describe yourself? 👀"
+        msg = "Great 🙌\
+        \nNext, what is your number 1 personal or professional goal right now?"
+        await update.message.reply_text(msg)
     elif count == 5:
         count += 1
-        return "Great 🙌\
-        \nNext, what is your number 1 personal or professional goal right now?"
+        dictionary[update.message.chat.id]["goal"] = text
+        msg = "And, do you have any other personal or professional goals right now?\
+            \nPlease share a few more with me…"
+        await update.message.reply_text(msg)
     elif count == 6:
         count += 1
-        return "And, do you have any other personal or professional goals right now?\
-            \nPlease share a few more with me…"
+        dictionary[update.message.chat.id]['other_goals'] = text
+        msg = "You are doing great!\
+            \nFinal question, what skillsets are you looking to learn more about?"
+        await update.message.reply_text(msg)
     elif count == 7:
         count += 1
-        return "You are doing great!\
-            \nFinal question, what skillsets are you looking to learn more about?"
+        dictionary[update.message.chat.id]['skills'] = text
+        msg = "Well done! \
+            \nHere are the top 3 people I think you should meet"
+        await update.message.reply_text(msg)
 
-    
-    return 'N/A'
+    print(dictionary)
 
+async def handle_callback(update, context):
+    ans = update.callback_query.data
+    global count
+    if ans in a1:
+        dictionary[update.callback_query.from_user.id]['mode'] = ans
+        print(dictionary)
+        await update.callback_query.message.edit_text("Great, what's your " + ans + "?")
+    else:
+        if ans == a2[-1]:
+            msg = "How would you describe yourself? 👀"
+            await update.callback_query.message.edit_text(msg)
+        else:
+            count += 2
+            dictionary[update.callback_query.from_user.id]["role"] = ans
+            msg = "Great 🙌\
+            \nNext, what is your number 1 personal or professional goal right now?"
+            await update.callback_query.message.edit_text(msg)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get basic info of the incoming message
     message_type: str = update.message.chat.type
     text: str = update.message.text
-
+    
     # Print a log for debugging
     print(f'User ({update.message.chat.id}) in {message_type}: "{text}"')
 
@@ -163,28 +197,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''
 
     global count
-    if count in text_count:
-        response: str = handle_response(text)
-        await update.message.reply_text(response)
+
+    if text is not None:
+        await handle_response(update, context, text)
+        print(count, text)
     
-    elif count in poll_count:
+    '''
+    elif update.callback_query is not None:
+        print('hello')
+    '''
 
-        options = []
-        if count == 1:
-            for ans in a1:
-                options.append(InlineKeyboardButton(text=ans, callback_data=ans))
-            reply_markup = InlineKeyboardMarkup([options])
-            await context.bot.send_message(chat_id=get_chat_id(update, context), text=q1, reply_markup=reply_markup)
-        count += 1
-
-    
-    else:
-        await update.message.reply_text("Great, I will introduce you over the email!\
-        \nYou will receive the intro shortly 😉\
-        \nI will also send a few other profiles for you to choose from. \
-        \nThank you!")
-
-
+'''
 async def poll_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     answer = update.poll.options
     print(answer)
@@ -202,7 +225,8 @@ async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         is_closed=True,
         reply_markup=ReplyKeyboardRemove(),
     )
-
+'''
+    
 # Log errors
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f'Update {update} caused error {context.error}')
@@ -217,9 +241,8 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CommandHandler('custom', custom_command))
     
-    app.add_handler(MessageHandler(filters.POLL, receive_poll))
-    app.add_handler(PollAnswerHandler(poll_handler))
-
+    #app.add_handler(PollAnswerHandler(poll_handler))
+    app.add_handler(CallbackQueryHandler(handle_callback))
     # Messages
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
