@@ -5,15 +5,9 @@ from dotenv import load_dotenv, find_dotenv
 from typing import Final
 
 from telegram import (
-    KeyboardButton,
-    KeyboardButtonPollType,
-    Poll,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     Update,
     InlineKeyboardButton, 
     InlineKeyboardMarkup, 
-    InputMediaPhoto
 )
 
 # pip install python-telegram-bot
@@ -24,8 +18,6 @@ from telegram.ext import (
         MessageHandler,
         filters,
         ContextTypes,
-        PollHandler,
-        PollAnswerHandler
     )
 
 
@@ -44,14 +36,12 @@ a1 = ['Email', 'Telegram', 'SMS', 'WhatsApp']
 q2 = "All set 👏 Now, for me to find the best matches for you, I will ask you a few more questions. \
     \nWhat best describes you?"
 a2 = ['Investor', 'Founder', 'Builder', 'Engineer', 'Business Dev & Marketing', 'Advisor', 'Other']
- 
-
-dictionary = defaultdict(dict)
 
 
 # Lets us use the /start command
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global count
+    global count, dictionary
+    dictionary = defaultdict(dict)
     count = 0
     await update.message.reply_text('Hello 👋, I’m Networky Intro Bot!')
     await update.message.reply_text('I’m an AI-driven match-making bot that helps you grow your personal network.')
@@ -84,20 +74,6 @@ def get_chat_id(update, context):
 
     return chat_id
     
-'''
-def get_answer(update):
-  answers = update.poll.options
-
-  ret = ""
-
-  for answer in answers:
-    if answer.voter_count == 1:
-      # found it
-      ret = answer.text
-      break
-  return ret
-  '''
-
 
 async def add_suggested_actions(update, context, question, answers):
     options = []
@@ -125,11 +101,14 @@ async def handle_response(update, context, text: str) -> str:
         dictionary[update.message.chat.id]["last_name"] = text
         await add_suggested_actions(update, context, q1, a1)
     elif count == 2:
+        dictionary[update.message.chat.id]["mode_id"] = text
         count += 1
         await add_suggested_actions(update, context, q2, a2)
     elif count == 3:
-        count += 1
+        count += 2
         dictionary[update.message.chat.id]["role"] = text
+        msg = "Great 🙌\
+        \nNext, what is your number 1 personal or professional goal right now?"
         await update.message.reply_text(msg)
     elif count == 4:
         count += 1
@@ -155,11 +134,9 @@ async def handle_response(update, context, text: str) -> str:
             \nHere are the top 3 people I think you should meet"
         await update.message.reply_text(msg)
 
-    print(dictionary)
 
 async def handle_callback(update, context):
     ans = update.callback_query.data
-    global count
     if ans in a1:
         dictionary[update.callback_query.from_user.id]['mode'] = ans
         print(dictionary)
@@ -183,49 +160,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Print a log for debugging
     print(f'User ({update.message.chat.id}) in {message_type}: "{text}"')
 
-    '''
-    # React to group messages only if users mention the bot directly
-    if message_type == 'group':
-        # Replace with your bot username
-        if BOT_USERNAME in text:
-            new_text: str = text.replace(BOT_USERNAME, '').strip()
-            response: str = handle_response(new_text)
-        else:
-            return  # We don't want the bot respond if it's not mentioned in the group
-    else:
-        response: str = handle_response(text)
-    '''
-
-    global count
 
     if text is not None:
         await handle_response(update, context, text)
-        print(count, text)
+        #print(count, text)
     
-    '''
-    elif update.callback_query is not None:
-        print('hello')
-    '''
-
-'''
-async def poll_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    answer = update.poll.options
-    print(answer)
-
-
-async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """On receiving polls, reply to it by a closed poll copying the received poll"""
-    actual_poll = update.effective_message.poll
-    # Only need to set the question and options, since all other parameters don't matter for
-    # a closed poll
-    await update.effective_message.reply_poll(
-        question=actual_poll.question,
-        options=[o.text for o in actual_poll.options],
-        # with is_closed true, the poll/quiz is immediately closed
-        is_closed=True,
-        reply_markup=ReplyKeyboardRemove(),
-    )
-'''
     
 # Log errors
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
