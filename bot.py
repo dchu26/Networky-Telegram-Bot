@@ -35,6 +35,9 @@ load_dotenv(find_dotenv())
 
 print('Starting up bot...')
 
+global dictionary
+dictionary = defaultdict(dict)
+
 TOKEN: Final = os.environ.get("TOKEN")
 BOT_USERNAME: Final = '@networky_intro_bot'
 
@@ -88,8 +91,6 @@ def dict_to_pd(data):
 
 # Lets us use the /start command
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global dictionary
-    dictionary = defaultdict(dict)
     await update.message.reply_text('Hello 👋, I’m Networky Intro Bot!')
     await update.message.reply_text('I’m an AI-driven match-making bot that helps you grow your personal network.')
     await update.message.reply_text('I’ll help you connect with 3 people from Tess Hau personal network that I think you’ll love to talk to 😉')
@@ -174,6 +175,7 @@ async def handle_response(update, context, text: str) -> str:
             }
             resp = requests.get(base_url, data = parameters)
         dict_to_pd(dictionary[update.message.chat.id])
+        del dictionary[update.message.chat.id]
 
 
 
