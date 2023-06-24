@@ -125,9 +125,10 @@ async def add_suggested_actions(update, context, question, answers):
     options = []
 
     for item in answers:
-        options.append(InlineKeyboardButton(item, callback_data=item))
+        option = [InlineKeyboardButton(item, callback_data=item)]
+        options.append(option)
 
-    reply_markup = InlineKeyboardMarkup([options])
+    reply_markup = InlineKeyboardMarkup(options)
 
     # update.message.reply_text(response.message, reply_markup=reply_markup)
     await context.bot.send_message(chat_id=get_chat_id(update, context), text=question, reply_markup=reply_markup)
